@@ -9,6 +9,8 @@ import type { HeadingIdsOption } from 'comark'
 export interface HeadingIdTracker {
   nested: boolean
   slugCounts: Map<string, number>
+  /** Every id handed out so far, so a suffixed id never collides with a literal one (`Foo`, `Foo`, `Foo-1`) */
+  usedIds: Set<string>
   stack: Array<{ level: number; id: string }>
 }
 
@@ -18,7 +20,7 @@ export interface HeadingIdTracker {
  */
 export function createHeadingIdTracker(option: HeadingIdsOption = true): HeadingIdTracker | undefined {
   if (option === false) return undefined
-  return { nested: option !== 'flat', slugCounts: new Map(), stack: [] }
+  return { nested: option !== 'flat', slugCounts: new Map(), usedIds: new Set(), stack: [] }
 }
 
 /**
@@ -50,7 +52,7 @@ export function slugify(text: string): string {
  */
 export function nextHeadingId(text: string, level: number, tracker: HeadingIdTracker): string {
   let slug = slugify(text)
-  const { stack, slugCounts } = tracker
+  const { stack, slugCounts, usedIds } = tracker
 
   if (tracker.nested) {
     // Pop headings at same level or deeper
@@ -69,7 +71,13 @@ export function nextHeadingId(text: string, level: number, tracker: HeadingIdTra
     stack.push({ level, id: slug })
   }
 
-  const count = slugCounts.get(slug) ?? 0
+  let count = slugCounts.get(slug) ?? 0
+  let id = count === 0 ? slug : `${slug}-${count}`
+  while (usedIds.has(id)) {
+    count++
+    id = `${slug}-${count}`
+  }
   slugCounts.set(slug, count + 1)
-  return count === 0 ? slug : `${slug}-${count}`
+  usedIds.add(id)
+  return id
 }
