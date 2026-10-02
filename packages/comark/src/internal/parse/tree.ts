@@ -376,9 +376,12 @@ function uniqueSlug(slug: string, level: number, state: ProcessState): string {
   while (state.headingStack.length > 0 && state.headingStack[state.headingStack.length - 1].level >= level) {
     state.headingStack.pop()
   }
+  // Use parent's full ID as prefix (h1 doesn't prefix children). Skip the
+  // composition when either side is empty, so a symbol-only parent or child
+  // never yields a degenerate id like "-café" or "setup-".
   if (state.headingStack.length > 0) {
     const parent = state.headingStack[state.headingStack.length - 1]
-    if (parent.level >= 2) {
+    if (parent.level >= 2 && parent.id && slug) {
       slug = parent.id + '-' + slug
     }
   }
@@ -457,7 +460,11 @@ const processors: Record<string, Processor> = {
       const level = Number.parseInt((tokens[start].tag || 'h1').replace('h', ''), 10) || 1
       const _textContent = textContent(node)
       const headingId = uniqueSlug(slugify(_textContent), level, state)
-      ;(node as ElementNode)[1] = { id: headingId, ...(node[1] as Record<string, unknown>) }
+      // An empty slug is recorded but never a usable anchor, and each further duplicate
+      // of it comes back as "-1", "-2", … — none of which is either.
+      if (headingId && !/^-\d+$/.test(headingId)) {
+        ;(node as ElementNode)[1] = { id: headingId, ...(node[1] as Record<string, unknown>) }
+      }
     }
 
     return { nextIndex, node }

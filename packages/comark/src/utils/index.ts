@@ -135,6 +135,31 @@ export async function visitAsync(
   }
 }
 
+const CODE_BLOCK_PROPS = new Set(['language', 'filename', 'highlights', 'meta'])
+
+/**
+ * Maps code block props on a native `<pre>` to `data-*` attributes.
+ *
+ * Raw HTML (`node[1].$.html`) is left unchanged so authored attributes round-trip.
+ * The attribute bag does not include `$` — `resolveAttributes` strips it — so the source
+ * node is required.
+ */
+export function toNativeAttributes<T extends Record<string, any>>(tag: string, node: Node, attributes: T): T {
+  if (tag !== 'pre' || !Array.isArray(node) || node[1]?.$?.html === 1) return attributes
+  let changed = false
+  const result: Record<string, any> = {}
+  for (const key in attributes) {
+    if (CODE_BLOCK_PROPS.has(key)) {
+      changed = true
+      const value = attributes[key]
+      result[`data-${key}`] = value !== null && typeof value === 'object' ? JSON.stringify(value) : value
+    } else {
+      result[key] = attributes[key]
+    }
+  }
+  return changed ? (result as T) : attributes
+}
+
 // #region String Utils
 
 /**

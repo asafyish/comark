@@ -17,7 +17,7 @@ import {
 } from '@angular/core'
 import type { ElementNode, Node as MarkdownAstNode, NodeRenderData } from 'comark'
 import { resolveIfWrapper, selectIfBranch, shouldRenderIf, type IfProps } from 'comark/plugins/binding'
-import { isHtmlVoidElement, pascalCase, resolveAttributes } from 'comark/utils'
+import { isHtmlVoidElement, pascalCase, resolveAttributes, toNativeAttributes } from 'comark/utils'
 
 interface StructuralComponent extends Type<any> {
   ɵcomarkIf?: boolean
@@ -178,10 +178,11 @@ export class MarkdownNode implements OnChanges {
     tag: string,
     attrs: Record<string, any>,
     children: MarkdownAstNode[],
-    childrenRenderData: NodeRenderData
+    childrenRenderData: NodeRenderData,
+    node?: MarkdownAstNode
   ): void {
     const el = this.renderer.createElement(tag)
-    this.applyAttributes(el, attrs)
+    this.applyAttributes(el, node ? toNativeAttributes(tag, node, attrs) : attrs)
 
     // `innerHTML` from document attributes is never applied — resolveAttributes
     // drops DOM sink props, and raw HTML has its own explicit parse path.
@@ -198,7 +199,14 @@ export class MarkdownNode implements OnChanges {
     children: MarkdownAstNode[],
     childrenRenderData: NodeRenderData
   ): void {
-    this.renderNativeEl(this.elementRef.nativeElement as HTMLElement, tag, attrs, children, childrenRenderData)
+    this.renderNativeEl(
+      this.elementRef.nativeElement as HTMLElement,
+      tag,
+      attrs,
+      children,
+      childrenRenderData,
+      this.node
+    )
   }
 
   /** Evaluate an `::if` before rendering any of its descendants. */
@@ -367,7 +375,7 @@ export class MarkdownNode implements OnChanges {
           const resolved = resolveAttributes(childProps, renderData, { parseJson: true })
           const hasOwnAttrs = Object.keys(resolved).length > 0
           const childRenderData: NodeRenderData = hasOwnAttrs ? { ...renderData, props: resolved } : renderData
-          this.renderNativeEl(parentEl, childTag, resolved, grandChildren, childRenderData)
+          this.renderNativeEl(parentEl, childTag, resolved, grandChildren, childRenderData, child)
         }
       }
     }
