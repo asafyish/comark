@@ -415,8 +415,14 @@ function processBlockToken(
       if (state?.headingIds) {
         const text = children.nodes.map((n) => textContent(n)).join('')
         const headingId = uniqueSlug(slugify(text), level, state)
-        // Merge user-supplied attrs with the auto-generated id; user `id` wins.
-        attrs = { id: headingId, ...userAttrs }
+        // An empty slug is recorded but never a usable anchor, and each further duplicate
+        // of it comes back as "-1", "-2", … — none of which is either.
+        if (headingId && !/^-\d+$/.test(headingId)) {
+          // Merge user-supplied attrs with the auto-generated id; user `id` wins.
+          attrs = { id: headingId, ...userAttrs }
+        } else {
+          attrs = userAttrs
+        }
       } else {
         attrs = userAttrs
       }
@@ -623,20 +629,33 @@ function mergeAdjacentTextNodes(nodes: Node[]): Node[] {
 }
 
 /**
- * Convert text to a slug for heading IDs
+ * Convert text to a slug for heading IDs.
  * Example: "Hello World" -> "hello-world"
  * Example: "1. Introduction" -> "_1-introduction"
+ * Example: "Café" -> "café"
+ *
+ * Keeps Unicode letters, marks, decimal digits, and letter numbers. A combining mark is
+ * dropped wherever it would lead, so the result is a valid HTML5 id (NameStartChar is a
+ * letter or `_`, never a mark).
  */
 function slugify(text: string): string {
   let slug = text
+    .normalize('NFC')
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/[^\w-]+/g, '') // Remove non-word chars (except hyphens)
+    // Keep Unicode letters, marks, decimal digits and letter numbers; drop the rest.
+    // Other numbers (No: ①, ½, ²) are not valid HTML5 id or CSS ident characters.
+    .replace(/[^\p{L}\p{M}\p{Nd}\p{Nl}_-]+/gu, '')
     .replace(/-{2,}/g, '-') // Replace multiple hyphens with single hyphen
-    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+    // Drop a leading run of marks and hyphens, plus trailing hyphens. Marks and
+    // hyphens only ever expose each other (`\u0301-1` would otherwise survive as
+    // "-1", which the dedup guard discards), so one alternation covers the run.
+    .replace(/^(?:\p{M}+|-+)+|-+$/gu, '')
 
-  // Prefix with underscore if starts with a digit (HTML IDs can't start with numbers)
+  // Prefix an ASCII leading digit. `#123` is not a valid CSS ident; a non-ASCII
+  // digit (U+0660 ARABIC-INDIC DIGIT ZERO and friends) is, so it is left as-is.
+  // `\d` stays without the `u` flag on purpose — with `u` it would match every Nd.
   if (/^\d/.test(slug)) {
     slug = '_' + slug
   }
@@ -654,10 +673,12 @@ function uniqueSlug(slug: string, level: number, state?: ProcessState): string {
   while (state.headingStack.length > 0 && state.headingStack[state.headingStack.length - 1].level >= level) {
     state.headingStack.pop()
   }
-  // Use parent's full ID as prefix (h1 doesn't prefix children)
+  // Use parent's full ID as prefix (h1 doesn't prefix children). Skip the
+  // composition when either side is empty, so a symbol-only parent or child
+  // never yields a degenerate id like "-café" or "setup-".
   if (state.headingStack.length > 0) {
     const parent = state.headingStack[state.headingStack.length - 1]
-    if (parent.level >= 2) {
+    if (parent.level >= 2 && parent.id && slug) {
       slug = parent.id + '-' + slug
     }
   }
