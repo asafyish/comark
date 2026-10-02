@@ -418,3 +418,39 @@ Your changes have been saved.
     ])
   })
 })
+
+// HTML opened inside a markdown container must stay inside (and close with) that container.
+describe('HTML inside markdown containers', () => {
+  it('keeps inline HTML content inside a table cell', async () => {
+    const result = await parseMarkdown('| a |\n|---|\n| <b>x</b> |')
+
+    expect(result.nodes).toEqual([
+      [
+        'table',
+        {},
+        ['thead', {}, ['tr', {}, ['th', {}, 'a']]],
+        ['tbody', {}, ['tr', {}, ['td', {}, ['b', { $: { html: 1, block: 0 } }, 'x']]]],
+      ],
+    ])
+  })
+
+  it('keeps block HTML content inside a blockquote', async () => {
+    const result = await parseMarkdown('> <div>\n> hi\n> </div>')
+
+    expect(result.nodes).toEqual([['blockquote', {}, ['div', { $: { html: 1, block: 1 } }, 'hi']]])
+  })
+
+  it('closes an unclosed inline tag at the end of its list item', async () => {
+    const result = await parseMarkdown('- <span>a\n- b')
+
+    expect(result.nodes).toEqual([['ul', {}, ['li', {}, ['span', { $: { html: 1, block: 1 } }, 'a']], ['li', {}, 'b']]])
+  })
+})
+
+describe('stray HTML close tags', () => {
+  it('keeps the surrounding paragraph when a close tag has no opener', async () => {
+    const result = await parseMarkdown('</div> orphan')
+
+    expect(result.nodes).toEqual([['p', {}, ' orphan']])
+  })
+})

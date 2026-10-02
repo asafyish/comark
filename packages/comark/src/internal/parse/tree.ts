@@ -398,12 +398,42 @@ function singleToken(fn: (token: Token) => Node) {
     processPossibleAttributesSyntax(tokens, { nextIndex: start + 1, node: fn(tokens[start]) })
 }
 
+/**
+ * Run `fn` with a fresh HTML stack so tags opened inside a markdown container
+ * (list item, blockquote, table cell…) are paired and closed within it, and
+ * cannot capture the container's siblings. Frames still open when the
+ * container ends are closed into its children, like EOF does at the root.
+ */
+function withHtmlScope(
+  state: ProcessState,
+  fn: () => { children: Node[]; nextIndex: number }
+): { children: Node[]; nextIndex: number } {
+  const outerStack = state.htmlStack
+  const outerContainer = state.insideMarkdownContainer
+  state.htmlStack = []
+  state.insideMarkdownContainer = 0
+  try {
+    const result = fn()
+    while (state.htmlStack.length > 0) {
+      const frame = state.htmlStack.pop()!
+      frame.block = true
+      const node = frameToNode(frame)
+      if (state.htmlStack.length > 0) state.htmlStack[state.htmlStack.length - 1].children.push(node)
+      else result.children.push(node)
+    }
+    return result
+  } finally {
+    state.htmlStack = outerStack
+    state.insideMarkdownContainer = outerContainer
+  }
+}
+
 function openCloseToken(closeType: string, tag: string = '', nest = false) {
   return (tokens: Token[], start: number, state: ProcessState) => {
     const open = tokens[start]
-    if (nest) state.insideMarkdownContainer += 1
-    const { children, nextIndex } = processChildren(tokens, start, closeType, state)
-    if (nest) state.insideMarkdownContainer -= 1
+    const { children, nextIndex } = nest
+      ? withHtmlScope(state, () => processChildren(tokens, start, closeType, state, true))
+      : processChildren(tokens, start, closeType, state)
     const attrs = processAttributes(open.attrs)
     return processPossibleAttributesSyntax(tokens, {
       nextIndex,
@@ -518,6 +548,9 @@ const processors: Record<string, Processor> = {
     const canUnwrap =
       Array.isArray(final) &&
       final.length === 3 &&
+      // Only an element can replace the paragraph; a stray closer (`</div> text`)
+      // leaves a bare string that must stay wrapped.
+      Array.isArray(final[2]) &&
       inline?.type === 'inline' &&
       inline.children?.[0]?.type === 'html_inline' &&
       (!inlineTags.has((final[2] as ElementNode)?.[0] as string) ||
