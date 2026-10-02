@@ -72,7 +72,7 @@ naturally appears inline after the deepest trailing text node.
   import MarkdownNode from './MarkdownNode.svelte'
   import ComarkComponent from './ComarkComponent.svelte'
   import Resolve from './Resolve.svelte'
-  import { resolveAttributes } from 'comark/utils'
+  import { resolveAttributes, toNativeAttributes } from 'comark/utils'
 
   const EMPTY_RENDER_DATA: NodeRenderData = { frontmatter: {}, meta: {}, data: {}, props: {} }
 
@@ -197,6 +197,8 @@ naturally appears inline after the deepest trailing text node.
   // Only shadow the parent's `props` scope when the current element has its
   // own attributes. Bare wrappers (`<p>`, `<ul>`, `<li>`, …) must keep the
   // parent's scope so bindings like `{{ props.x }}` reach across them.
+  let nativeProps = $derived(tag ? toNativeAttributes(tag, node, mappedProps) : mappedProps)
+
   let childrenRenderData = $derived<NodeRenderData>(
     Object.keys(mappedProps).length > 0
       ? { ...renderData, props: mappedProps }
@@ -283,9 +285,9 @@ naturally appears inline after the deepest trailing text node.
     {@render renderChildren()}
   </Resolver>
 {:else if isVoid}
-  <svelte:element this={tag} {...mappedProps} />
+  <svelte:element this={tag} {...nativeProps} />
 {:else if tag}
-  <svelte:element this={tag} {...mappedProps}>
+  <svelte:element this={tag} {...nativeProps}>
     {@render renderChildren()}
   </svelte:element>
 {/if}
