@@ -233,7 +233,8 @@ describe('streaming mode', () => {
     it('closes quoted attributes after reusing a completed component', async () => {
       const parse = createMarkdownParser()
       const source = '::note\nContent\n::\n\n:button{label="'
-      await parse(source, { streaming: true })
+      const partial0 = await parse(source, { streaming: true })
+      expect(partial0.nodes[1]).toMatchObject(['button', { label: '' }])
 
       const partial = await parse(source + 'Review', { streaming: true })
       expect(partial.nodes[1]).toMatchObject(['button', { label: 'Review' }])
